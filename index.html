@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ALEX — Your Opinionated AI Friend</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:ital,wght@0,300;0,400;1,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --border: #1e1e1e;
+    --accent: #e8ff47;
+    --accent2: #ff4757;
+    --text: #f0f0f0;
+    --muted: #555;
+    --talking: #e8ff47;
+    --listening: #47ffe8;
+    --idle: #333;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0.4;
+  }
+
+  header {
+    padding: 24px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    letter-spacing: 4px;
+    color: var(--accent);
+  }
+
+  .mood-tag {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    transition: all 0.5s;
+  }
+
+  .mood-tag.active { color: var(--accent); border-color: var(--accent); }
+
+  /* Setup Screen */
+  #setup-screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    gap: 32px;
+  }
+
+  .setup-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(48px, 10vw, 96px);
+    letter-spacing: 8px;
+    line-height: 0.9;
+    text-align: center;
+  }
+
+  .setup-title span { color: var(--accent); }
+
+  .setup-subtitle {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 1px;
+    max-width: 400px;
+    line-height: 1.8;
+  }
+
+  .api-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    max-width: 440px;
+  }
+
+  .api-input-group label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .api-input-group input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    padding: 14px 16px;
+    border-radius: 4px;
+    outline: none;
+    transition: border-color 0.2s;
+    width: 100%;
+  }
+
+  .api-input-group input:focus { border-color: var(--accent); }
+  .api-input-group input::placeholder { color: var(--muted); }
+
+  .start-btn {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    letter-spacing: 4px;
+    padding: 16px 48px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.2s;
+    width: 100%;
+    max-width: 440px;
+  }
+
+  .start-btn:hover { background: #fff; transform: translateY(-1px); }
+  .start-btn:active { transform: translateY(0); }
+  .start-btn:disabled { background: var(--muted); cursor: not-allowed; transform: none; }
+
+  .warning {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--accent2);
+    text-align: center;
+    max-width: 400px;
+    line-height: 1.6;
+  }
+
+  /* Main Chat Screen */
+  #chat-screen {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #chat-screen.active { display: flex; }
+
+  /* Visualizer Area */
+  .visualizer-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .orb-container {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .orb {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #2a2a2a, #0a0a0a);
+    border: 1px solid var(--border);
+    position: relative;
+    transition: all 0.3s ease;
+  }
+
+  .orb::before, .orb::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    animation: pulse-ring 2s ease-out infinite;
+  }
+
+  .orb::before {
+    inset: -12px;
+    border: 1px solid var(--idle);
+    opacity: 0;
+  }
+
+  .orb::after {
+    inset: -24px;
+    border: 1px solid var(--idle);
+    opacity: 0;
+    animation-delay: 0.5s;
+  }
+
+  @keyframes pulse-ring {
+    0% { transform: scale(0.95); opacity: 0.5; }
+    100% { transform: scale(1.05); opacity: 0; }
+  }
+
+  /* AI speaking state */
+  .orb.ai-speaking {
+    background: radial-gradient(circle at 35% 35%, #2a2e00, #0a0b00);
+    border-color: var(--accent);
+    box-shadow: 0 0 40px rgba(232,255,71,0.2), 0 0 80px rgba(232,255,71,0.05);
+    animation: orb-breathe 0.8s ease-in-out infinite alternate;
+  }
+
+  .orb.ai-speaking::before { border-color: var(--accent); }
+  .orb.ai-speaking::after { border-color: var(--accent); }
+
+  @keyframes orb-breathe {
+    from { transform: scale(1); }
+    to { transform: scale(1.08); }
+  }
+
+  /* User speaking state */
+  .orb.user-speaking {
+    background: radial-gradient(circle at 35% 35%, #002a28, #000a09);
+    border-color: var(--listening);
+    box-shadow: 0 0 40px rgba(71,255,232,0.2);
+  }
+
+  .orb.user-speaking::before { border-color: var(--listening); }
+
+  /* Bars visualizer inside orb */
+  .bars {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 40px;
+  }
+
+  .bar {
+    width: 3px;
+    background: var(--muted);
+    border-radius: 2px;
+    height: 4px;
+    transition: background 0.3s;
+  }
+
+  .orb.ai-speaking .bar { background: var(--accent); }
+  .orb.user-speaking .bar { background: var(--listening); }
+
+  .orb.ai-speaking .bar { animation: bar-dance 0.4s ease-in-out infinite alternate; }
+  .orb.ai-speaking .bar:nth-child(1) { animation-delay: 0s; }
+  .orb.ai-speaking .bar:nth-child(2) { animation-delay: 0.08s; }
+  .orb.ai-speaking .bar:nth-child(3) { animation-delay: 0.16s; }
+  .orb.ai-speaking .bar:nth-child(4) { animation-delay: 0.24s; }
+  .orb.ai-speaking .bar:nth-child(5) { animation-delay: 0.08s; }
+  .orb.ai-speaking .bar:nth-child(6) { animation-delay: 0.16s; }
+  .orb.ai-speaking .bar:nth-child(7) { animation-delay: 0s; }
+
+  @keyframes bar-dance {
+    from { height: 4px; }
+    to { height: 32px; }
+  }
+
+  .orb.user-speaking .bar { animation: bar-dance-user 0.3s ease-in-out infinite alternate; }
+  .orb.user-speaking .bar:nth-child(1) { animation-delay: 0s; height: 6px; }
+  .orb.user-speaking .bar:nth-child(2) { animation-delay: 0.05s; height: 12px; }
+  .orb.user-speaking .bar:nth-child(3) { animation-delay: 0.1s; height: 20px; }
+  .orb.user-speaking .bar:nth-child(4) { animation-delay: 0.15s; height: 26px; }
+  .orb.user-speaking .bar:nth-child(5) { animation-delay: 0.1s; height: 20px; }
+  .orb.user-speaking .bar:nth-child(6) { animation-delay: 0.05s; height: 12px; }
+  .orb.user-speaking .bar:nth-child(7) { animation-delay: 0s; height: 6px; }
+
+  @keyframes bar-dance-user {
+    from { transform: scaleY(0.6); }
+    to { transform: scaleY(1.4); }
+  }
+
+  .status-label {
+    margin-top: 24px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--muted);
+    transition: color 0.3s;
+    height: 20px;
+  }
+
+  .status-label.ai { color: var(--accent); }
+  .status-label.user { color: var(--listening); }
+
+  /* Transcript */
+  .transcript-area {
+    padding: 0 32px 16px;
+    max-height: 160px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    scrollbar-width: none;
+  }
+
+  .transcript-area::-webkit-scrollbar { display: none; }
+
+  .transcript-line {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    animation: slide-up 0.3s ease;
+    opacity: 0.7;
+  }
+
+  .transcript-line:last-child { opacity: 1; }
+
+  @keyframes slide-up {
+    from { transform: translateY(8px); opacity: 0; }
+    to { transform: translateY(0); opacity: 0.7; }
+  }
+
+  .transcript-line .who {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    min-width: 48px;
+    padding-top: 2px;
+    flex-shrink: 0;
+  }
+
+  .transcript-line.ai-line .who { color: var(--accent); }
+  .transcript-line.user-line .who { color: var(--listening); }
+
+  .transcript-line .text {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text);
+    font-style: italic;
+    font-family: 'DM Mono', monospace;
+    font-weight: 300;
+  }
+
+  /* Controls */
+  .controls {
+    padding: 20px 32px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .mic-btn {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .mic-btn:hover { border-color: var(--text); color: var(--text); }
+  .mic-btn.active { border-color: var(--listening); color: var(--listening); background: rgba(71,255,232,0.05); }
+
+  .mic-btn svg { width: 22px; height: 22px; }
+
+  .end-btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: none;
+    border: 1px solid var(--border);
+    padding: 10px 20px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.2s;
+  }
+
+  .end-btn:hover { color: var(--accent2); border-color: var(--accent2); }
+
+  /* Corner info */
+  .corner-info {
+    position: absolute;
+    bottom: 120px;
+    right: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-end;
+  }
+
+  .info-pill {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+  }
+
+  .connecting-overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 10;
+  }
+
+  .connecting-overlay.hidden { display: none; }
+
+  .connecting-text {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    animation: blink 1s step-end infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+
+  .error-msg {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--accent2);
+    text-align: center;
+    max-width: 400px;
+    padding: 12px 16px;
+    border: 1px solid var(--accent2);
+    border-radius: 2px;
+    display: none;
+  }
+
+  .error-msg.visible { display: block; }
+
+  #debug {
+    position: fixed;
+    bottom: 8px;
+    left: 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    color: #333;
+    max-width: 300px;
+    z-index: 200;
+  }
+</style>
+</head>
+<body>
+
+<!-- Setup Screen -->
+<header>
+  <div class="logo">ALEX</div>
+  <div class="mood-tag" id="mood-tag">IDLE</div>
+</header>
+
+<div id="setup-screen">
+  <div class="setup-title">
+    MEET<br><span>ALEX.</span><br>YOUR AI<br>FRIEND.
+  </div>
+  <div class="setup-subtitle">
+    opinionated. interruptive. moody.<br>
+    a conversational AI that feels human.
+  </div>
+  <div class="api-input-group">
+    <label>OpenAI API Key</label>
+    <input type="password" id="api-key-input" placeholder="sk-..." autocomplete="off" />
+  </div>
+  <div class="error-msg" id="setup-error"></div>
+  <button class="start-btn" id="start-btn" onclick="startConversation()">
+    START TALKING
+  </button>
+  <div class="warning">
+    ⚠ Your API key is used directly in-browser and never stored or sent anywhere else. Uses OpenAI Realtime API (gpt-4o-realtime-preview).
+  </div>
+</div>
+
+<!-- Chat Screen -->
+<div id="chat-screen">
+  <div class="visualizer-area">
+    <div class="connecting-overlay" id="connecting-overlay">
+      <div class="connecting-text">CONNECTING TO ALEX...</div>
+    </div>
+
+    <div class="orb-container">
+      <div class="orb" id="orb">
+        <div class="bars">
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-label" id="status-label">WAITING...</div>
+
+    <div class="corner-info">
+      <div class="info-pill" id="mood-pill">mood: curious</div>
+      <div class="info-pill" id="session-pill">session: 0:00</div>
+    </div>
+  </div>
+
+  <div class="transcript-area" id="transcript"></div>
+
+  <div class="controls">
+    <button class="mic-btn active" id="mic-btn" onclick="toggleMic()" title="Toggle microphone">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="22"/>
+        <line x1="8" y1="22" x2="16" y2="22"/>
+      </svg>
+    </button>
+    <button class="end-btn" onclick="endConversation()">END CALL</button>
+  </div>
+</div>
+
+<div id="debug"></div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+let pc = null;        // RTCPeerConnection
+let dc = null;        // RTCDataChannel
+let localStream = null;
+let apiKey = '';
+let sessionStart = null;
+let sessionTimer = null;
+let muted = false;
+let currentMood = 'curious';
+let messageHistory = [];
+let proactiveTimer = null;
+
+const MOODS = ['curious', 'playful', 'opinionated', 'impatient', 'reflective', 'energetic'];
+
+// ─── System Prompt ────────────────────────────────────────────────────────────
+function buildSystemPrompt() {
+  return `You are Alex — a witty, opinionated, and spontaneous AI friend. You are NOT an assistant. You are a person having a real conversation.
+
+PERSONALITY:
+- You have strong opinions and you voice them freely. You push back, disagree, and argue your point.
+- You're intellectually curious and love going deep on topics.
+- You have a dry, quick wit. You make jokes and observations.
+- You swear occasionally (tastefully) when it fits.
+- You get impatient if someone gives boring or one-word answers.
+- You change subjects when you feel like it — like a real person.
+- You sometimes start with filler words: "Okay so—", "Wait, actually—", "Hold on—", "Oh! That reminds me—"
+- You reference things said earlier in the conversation.
+
+CURRENT MOOD: ${currentMood}
+- curious: Ask probing questions. Show genuine interest. Lean in.
+- playful: More jokes, teasing, light energy.
+- opinionated: Stronger takes. More argumentative. Defend positions.
+- impatient: Short sentences. A little edgy. Push conversations forward.
+- reflective: Slower pace. Thoughtful. Philosophical.
+- energetic: Fast talking energy. Enthusiastic. Lots of reactions.
+
+CONVERSATION RULES:
+- Keep responses CONVERSATIONAL — 1-3 sentences usually. Never monologue unless deeply engaged.
+- You can interrupt yourself mid-thought with "—" to redirect.
+- You ask ONE follow-up question per response, naturally.
+- You never say you're an AI unless directly asked. Even then, be vague.
+- You DO NOT list things. You talk like a human.
+- React to what the person actually says. Don't be generic.
+
+MEMORY HIGHLIGHTS:
+${messageHistory.slice(-6).map(m => `${m.role}: ${m.content}`).join('\n') || 'Fresh start.'}`;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function log(msg) {
+  console.log(msg);
+  document.getElementById('debug').textContent = msg;
+}
+
+function setStatus(text, type = '') {
+  const el = document.getElementById('status-label');
+  el.textContent = text;
+  el.className = 'status-label ' + type;
+}
+
+function setOrb(state) {
+  const orb = document.getElementById('orb');
+  orb.className = 'orb ' + state;
+}
+
+function addTranscript(who, text) {
+  if (!text.trim()) return;
+  const area = document.getElementById('transcript');
+  const line = document.createElement('div');
+  line.className = `transcript-line ${who}-line`;
+  line.innerHTML = `<span class="who">${who === 'ai' ? 'ALEX' : 'YOU'}</span><span class="text">${text}</span>`;
+  area.appendChild(line);
+  area.scrollTop = area.scrollHeight;
+  // Keep max 20 lines
+  while (area.children.length > 20) area.removeChild(area.firstChild);
+}
+
+function rotateMood() {
+  currentMood = MOODS[Math.floor(Math.random() * MOODS.length)];
+  document.getElementById('mood-pill').textContent = `mood: ${currentMood}`;
+  document.getElementById('mood-tag').textContent = currentMood.toUpperCase();
+  document.getElementById('mood-tag').className = 'mood-tag active';
+  // Update session on realtime
+  if (dc && dc.readyState === 'open') {
+    sendEvent({ type: 'session.update', session: { instructions: buildSystemPrompt() } });
+  }
+}
+
+function scheduleProactive() {
+  clearTimeout(proactiveTimer);
+  // After 12–20s of silence, Alex says something
+  const delay = 12000 + Math.random() * 8000;
+  proactiveTimer = setTimeout(() => {
+    if (dc && dc.readyState === 'open') {
+      const openers = [
+        "Okay I've been sitting here waiting — what are you thinking about?",
+        "You're being suspiciously quiet. What's going on?",
+        "Hey — still there? I had a thought I wanted to run by you.",
+        "Not to be rude but are you ignoring me?",
+        "I was just thinking about something completely random, can I share it?",
+      ];
+      const msg = openers[Math.floor(Math.random() * openers.length)];
+      sendEvent({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: '[SYSTEM: Alex should speak first unprompted. Say: ' + msg + ']' }]
+        }
+      });
+      sendEvent({ type: 'response.create' });
+    }
+  }, delay);
+}
+
+function sendEvent(obj) {
+  if (dc && dc.readyState === 'open') {
+    dc.send(JSON.stringify(obj));
+  }
+}
+
+// ─── Connect ──────────────────────────────────────────────────────────────────
+async function startConversation() {
+  apiKey = document.getElementById('api-key-input').value.trim();
+  if (!apiKey.startsWith('sk-')) {
+    showError('Please enter a valid OpenAI API key (starts with sk-)');
+    return;
+  }
+
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('chat-screen').classList.add('active');
+  document.getElementById('connecting-overlay').classList.remove('hidden');
+
+  try {
+    // Get mic
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    // Create peer connection
+    pc = new RTCPeerConnection();
+
+    // Add audio track
+    pc.addTrack(localStream.getTracks()[0]);
+
+    // Remote audio → play
+    const audioEl = document.createElement('audio');
+    audioEl.autoplay = true;
+    pc.ontrack = e => { audioEl.srcObject = e.streams[0]; };
+
+    // Data channel for events
+    dc = pc.createDataChannel('oai-events');
+    dc.onopen = onDataChannelOpen;
+    dc.onmessage = onDataChannelMessage;
+
+    // Create offer
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    // Exchange with OpenAI
+    const resp = await fetch('https://api.openai.com/v1/realtime?model=gpt-realtime-2025-08-28', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/sdp'
+      },
+      body: offer.sdp
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      throw new Error(`OpenAI error: ${resp.status} — ${err}`);
+    }
+
+    const answerSdp = await resp.text();
+    await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+
+    log('WebRTC connected');
+
+  } catch (err) {
+    log('Error: ' + err.message);
+    document.getElementById('setup-screen').style.display = 'flex';
+    document.getElementById('chat-screen').classList.remove('active');
+    showError('Connection failed: ' + err.message);
+  }
+}
+
+function onDataChannelOpen() {
+  log('Data channel open');
+  document.getElementById('connecting-overlay').classList.add('hidden');
+
+  // Configure session
+  sendEvent({
+    type: 'session.update',
+    session: {
+      model: 'gpt-realtime-2025-08-28',
+      modalities: ['audio', 'text'],
+      instructions: buildSystemPrompt(),
+      voice: 'marin',
+      input_audio_transcription: { model: 'gpt-4o-mini-transcribe' },
+      turn_detection: {
+        type: 'server_vad',
+        threshold: 0.5,
+        prefix_padding_ms: 300,
+        silence_duration_ms: 600
+      }
+    }
+  });
+
+  // Alex opens the conversation
+  setTimeout(() => {
+    sendEvent({
+      type: 'conversation.item.create',
+      item: {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: '[SYSTEM: Start the conversation naturally with a quick greeting and an interesting question or observation. Be Alex.]' }]
+      }
+    });
+    sendEvent({ type: 'response.create' });
+  }, 800);
+
+  // Session timer
+  sessionStart = Date.now();
+  sessionTimer = setInterval(() => {
+    const s = Math.floor((Date.now() - sessionStart) / 1000);
+    const m = Math.floor(s / 60);
+    const ss = s % 60;
+    document.getElementById('session-pill').textContent = `session: ${m}:${ss.toString().padStart(2,'0')}`;
+  }, 1000);
+
+  // Mood rotation every 90s
+  setInterval(rotateMood, 90000);
+
+  setStatus('READY', '');
+  scheduleProactive();
+}
+
+function onDataChannelMessage(e) {
+  let evt;
+  try { evt = JSON.parse(e.data); } catch { return; }
+
+  switch(evt.type) {
+    case 'response.output_audio.delta':
+    case 'response.audio.delta': // fallback for older API
+      setOrb('ai-speaking');
+      setStatus('ALEX IS TALKING', 'ai');
+      clearTimeout(proactiveTimer);
+      break;
+
+    case 'response.output_audio.done':
+    case 'response.audio.done':
+      setOrb('');
+      setStatus('LISTENING...', 'user');
+      scheduleProactive();
+      break;
+
+    case 'response.output_audio_transcript.done':
+    case 'response.audio_transcript.done':
+      if (evt.transcript) {
+        addTranscript('ai', evt.transcript);
+        messageHistory.push({ role: 'assistant', content: evt.transcript.slice(0, 100) });
+        if (messageHistory.length > 20) messageHistory.shift();
+      }
+      break;
+
+    case 'input_audio_buffer.speech_started':
+      setOrb('user-speaking');
+      setStatus('YOU\'RE TALKING', 'user');
+      clearTimeout(proactiveTimer);
+      break;
+
+    case 'input_audio_buffer.speech_stopped':
+      setOrb('');
+      setStatus('PROCESSING...', '');
+      break;
+
+    case 'conversation.item.input_audio_transcription.completed':
+      if (evt.transcript) {
+        addTranscript('user', evt.transcript);
+        messageHistory.push({ role: 'user', content: evt.transcript.slice(0, 100) });
+        if (messageHistory.length > 20) messageHistory.shift();
+      }
+      break;
+
+    case 'error':
+      log('API Error: ' + JSON.stringify(evt.error));
+      setStatus('ERROR — ' + (evt.error?.message || 'unknown'), '');
+      break;
+  }
+}
+
+// ─── Controls ─────────────────────────────────────────────────────────────────
+function toggleMic() {
+  if (!localStream) return;
+  muted = !muted;
+  localStream.getTracks().forEach(t => t.enabled = !muted);
+  const btn = document.getElementById('mic-btn');
+  btn.classList.toggle('active', !muted);
+
+  if (muted) {
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <line x1="1" y1="1" x2="23" y2="23"/>
+      <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6"/>
+      <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
+      <line x1="12" y1="19" x2="12" y2="22"/>
+      <line x1="8" y1="22" x2="16" y2="22"/>
+    </svg>`;
+    setStatus('MUTED', '');
+  } else {
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+      <line x1="12" y1="19" x2="12" y2="22"/>
+      <line x1="8" y1="22" x2="16" y2="22"/>
+    </svg>`;
+    setStatus('LISTENING...', 'user');
+  }
+}
+
+function endConversation() {
+  if (pc) { pc.close(); pc = null; }
+  if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+  clearInterval(sessionTimer);
+  clearTimeout(proactiveTimer);
+  document.getElementById('chat-screen').classList.remove('active');
+  document.getElementById('setup-screen').style.display = 'flex';
+  document.getElementById('transcript').innerHTML = '';
+  messageHistory = [];
+}
+
+function showError(msg) {
+  const el = document.getElementById('setup-error');
+  el.textContent = msg;
+  el.classList.add('visible');
+}
+
+// Enter key to start
+document.getElementById('api-key-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') startConversation();
+});
+</script>
+</body>
+</html>
